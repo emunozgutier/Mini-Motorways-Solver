@@ -18,11 +18,12 @@ import (
 // handle is a small cyan square that can be dragged
 type handle struct {
 	widget.BaseWidget
-	onDragged func(fyne.Position)
+	id        int
+	onDragged func(int, fyne.Position)
 }
 
-func newHandle(onDragged func(fyne.Position)) *handle {
-	h := &handle{onDragged: onDragged}
+func newHandle(id int, onDragged func(int, fyne.Position)) *handle {
+	h := &handle{id: id, onDragged: onDragged}
 	h.ExtendBaseWidget(h)
 	return h
 }
@@ -39,9 +40,10 @@ func (h *handle) MinSize() fyne.Size {
 }
 
 func (h *handle) Dragged(e *fyne.DragEvent) {
-	h.Move(h.Position().Add(e.Dragged))
+	newPos := h.Position().Add(e.Dragged)
+	h.Move(newPos)
 	if h.onDragged != nil {
-		h.onDragged(h.Position())
+		h.onDragged(h.id, newPos)
 	}
 	h.Refresh()
 }
@@ -77,11 +79,11 @@ func CreateStartCapturePage(w fyne.Window) *fyne.Container {
 	page.CropRect.StrokeWidth = 2
 
 	// Setup handles
-	updateCrop := func(_ fyne.Position) {
-		page.syncCropRect()
+	updateCrop := func(id int, pos fyne.Position) {
+		page.syncHandles(id, pos)
 	}
 	for i := 0; i < 4; i++ {
-		page.Handles[i] = newHandle(updateCrop)
+		page.Handles[i] = newHandle(i, updateCrop)
 		page.Handles[i].Resize(page.Handles[i].MinSize())
 	}
 
@@ -175,6 +177,28 @@ func CreateStartCapturePage(w fyne.Window) *fyne.Container {
 	)
 }
 
+func (p *StartCapturePage) syncHandles(id int, pos fyne.Position) {
+	tl, tr, bl, br := p.Handles[0], p.Handles[1], p.Handles[2], p.Handles[3]
+
+	// Snap adjacent handles based on which handle is being dragged
+	switch id {
+	case 0: // TL
+		tr.Move(fyne.NewPos(tr.Position().X, pos.Y))
+		bl.Move(fyne.NewPos(pos.X, bl.Position().Y))
+	case 1: // TR
+		tl.Move(fyne.NewPos(tl.Position().X, pos.Y))
+		br.Move(fyne.NewPos(pos.X, br.Position().Y))
+	case 2: // BL
+		br.Move(fyne.NewPos(br.Position().X, pos.Y))
+		tl.Move(fyne.NewPos(pos.X, tl.Position().Y))
+	case 3: // BR
+		bl.Move(fyne.NewPos(bl.Position().X, pos.Y))
+		tr.Move(fyne.NewPos(pos.X, tr.Position().Y))
+	}
+
+	p.syncCropRect()
+}
+
 func (p *StartCapturePage) syncCropRect() {
 	tl, tr, bl, br := p.Handles[0].Position(), p.Handles[1].Position(), p.Handles[2].Position(), p.Handles[3].Position()
 
@@ -186,9 +210,6 @@ func (p *StartCapturePage) syncCropRect() {
 	p.CropRect.Move(fyne.NewPos(minX, minY))
 	p.CropRect.Resize(fyne.NewSize(maxX-minX, maxY-minY))
 	p.CropRect.Refresh()
-
-	// Update store coordinates (these are UI coordinates, GetCropPixels handles mapping to real pixels)
-	// Actually, let's keep GetCropPixels as the source of truth for "real" pixels.
 }
 
 func (p *StartCapturePage) GetCropPixels() (int, int, int, int) {
