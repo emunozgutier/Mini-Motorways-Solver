@@ -1,7 +1,9 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
+import { hueDiff } from '../utils/colorUtils';
 
 export type CaptureStep = 'SELECT_SOURCE' | 'WINDOW_MODE' | 'SELECT_AREA' | 'READY';
+
 export type ActivePage = 'START' | 'DISPLAY' | 'COLORS';
 
 interface CropArea {
@@ -36,12 +38,8 @@ interface CaptureState {
   reset: () => void;
 }
 
-const hueDiff = (h1: number, h2: number) => {
-  const diff = Math.abs(h1 - h2) % 360;
-  return diff > 180 ? 360 - diff : diff;
-};
-
 export const useCapture = create<CaptureState>()(
+
   persist(
     (set, get) => ({
       step: 'SELECT_SOURCE',
