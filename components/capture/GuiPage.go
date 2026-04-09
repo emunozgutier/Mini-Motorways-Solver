@@ -47,9 +47,6 @@ func CreateGuiPage(w fyne.Window) *fyne.Container {
 		page.updateBaseImage()
 		page.updatePreview()
 	})
-	if len(displayOptions) > 0 {
-		page.DisplaySelect.SetSelectedIndex(0)
-	}
 
 	page.XEntry = widget.NewEntry()
 	page.XEntry.SetText("0")
@@ -68,15 +65,16 @@ func CreateGuiPage(w fyne.Window) *fyne.Container {
 	page.HEntry.OnChanged = updateFunc
 
 	page.ModeRadio = widget.NewRadioGroup([]string{"Fullscreen", "Windowed"}, func(s string) {
-		if s == "Fullscreen" {
-			page.ControlsContainer.Hide()
-		} else {
-			page.ControlsContainer.Show()
+		if page.ControlsContainer != nil {
+			if s == "Fullscreen" {
+				page.ControlsContainer.Hide()
+			} else {
+				page.ControlsContainer.Show()
+			}
 		}
 		page.updatePreview()
 	})
 	page.ModeRadio.Horizontal = true
-	page.ModeRadio.SetSelected("Fullscreen")
 
 	page.ControlsContainer = container.NewGridWithColumns(4,
 		widget.NewLabel("X:"), page.XEntry,
@@ -85,6 +83,8 @@ func CreateGuiPage(w fyne.Window) *fyne.Container {
 		widget.NewLabel("Height:"), page.HEntry,
 	)
 	page.ControlsContainer.Hide() // hide by default
+
+	page.ModeRadio.SetSelected("Fullscreen")
 
 	startBtn := widget.NewButton("Start Analysis", func() {
 		// Placeholder for starting actual analysis of the game state
@@ -96,6 +96,10 @@ func CreateGuiPage(w fyne.Window) *fyne.Container {
 		page.ModeRadio,
 		page.ControlsContainer,
 	)
+
+	if len(displayOptions) > 0 {
+		page.DisplaySelect.SetSelectedIndex(0)
+	}
 
 	return container.NewBorder(
 		form,
