@@ -19,9 +19,14 @@ export interface KeyColor {
   rgb: string;
   hsl: string;
   h: number; // For diffing
+  s: number;
+  l: number;
   label: string;
   minWidth: number;   // Percentage (0-100)
   minHeight: number;  // Percentage (0-100)
+  tolHue: number;     // Degrees (0-180)
+  tolSat: number;     // Percentage (0-100)
+  tolLum: number;     // Percentage (0-100)
 }
 
 interface CaptureState {
@@ -36,12 +41,13 @@ interface CaptureState {
   setStream: (stream: MediaStream | null) => void;
   setCropArea: (cropArea: CropArea) => void;
   setSelectedColorId: (id: string | null) => void;
-  addKeyColor: (color: Omit<KeyColor, 'label' | 'id' | 'minWidth' | 'minHeight'>) => { success: boolean, reason?: string };
+  addKeyColor: (color: Omit<KeyColor, 'label' | 'id' | 'minWidth' | 'minHeight' | 'tolHue' | 'tolSat' | 'tolLum'>) => { success: boolean, reason?: string };
   removeKeyColor: (id: string) => void;
   updateKeyColorLabel: (id: string, label: string) => void;
-  updateKeyColorConfig: (id: string, config: Partial<Pick<KeyColor, 'minWidth' | 'minHeight'>>) => void;
+  updateKeyColorConfig: (id: string, config: Partial<Pick<KeyColor, 'minWidth' | 'minHeight' | 'tolHue' | 'tolSat' | 'tolLum'>>) => void;
   reset: () => void;
 }
+
 
 
 export const useCapture = create<CaptureState>()(
@@ -76,8 +82,11 @@ export const useCapture = create<CaptureState>()(
               ...color, 
               id: Math.random().toString(36).substr(2, 9), 
               label: `Color ${state.keyColors.length + 1}`,
-              minWidth: 1,  // Default 1%
-              minHeight: 1  // Default 1%
+              minWidth: 1,
+              minHeight: 1,
+              tolHue: 10,
+              tolSat: 20,
+              tolLum: 20
             }
           ]
         }));
@@ -100,6 +109,7 @@ export const useCapture = create<CaptureState>()(
         keyColors: [],
         selectedColorId: null
       }),
+
 
     }),
     {

@@ -37,3 +37,15 @@ export const hueDiff = (h1: number, h2: number): number => {
 export const isHueMatch = (h1: number, h2: number, tolerance = 10): boolean => {
   return hueDiff(h1, h2) <= tolerance;
 };
+
+export const isColorMatch = (
+  c1: HSL, 
+  c2: HSL, 
+  tols: { h: number, s: number, l: number }
+): boolean => {
+  const hMatch = hueDiff(c1.h, c2.h) <= tols.h;
+  const sMatch = Math.abs(c1.s - c2.s) <= tols.s;
+  const lMatch = Math.abs(c1.l - c2.l) <= tols.l;
+  return hMatch && sMatch && lMatch;
+};
+
