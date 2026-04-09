@@ -78,21 +78,27 @@ export class ObjectDetector {
       }
 
       // Finalize boxes for this color
+      const minW = keyColor.minWidth || 0;
+      const minH = keyColor.minHeight || 0;
+
       for (const det of colorDetections) {
-        // Filter out tiny noise (less than 4 pixels)
-        if (det.pixels > 3) {
+        const detW = ((det.maxX - det.minX + 1) / width) * 100;
+        const detH = ((det.maxY - det.minY + 1) / height) * 100;
+
+        // Filter based on min size %
+        if (det.pixels > 3 && detW >= minW && detH >= minH) {
           detections.push({
             colorId: keyColor.id,
             label: keyColor.label,
-            // Convert back to percentage-based coordinates for the UI
             x: (det.minX / width) * 100,
             y: (det.minY / height) * 100,
-            width: ((det.maxX - det.minX + 1) / width) * 100,
-            height: ((det.maxY - det.minY + 1) / height) * 100,
+            width: detW,
+            height: detH,
             color: keyColor.hex
           });
         }
       }
+
     }
 
     return detections;

@@ -20,6 +20,8 @@ export interface KeyColor {
   hsl: string;
   h: number; // For diffing
   label: string;
+  minWidth: number;   // Percentage (0-100)
+  minHeight: number;  // Percentage (0-100)
 }
 
 interface CaptureState {
@@ -32,11 +34,13 @@ interface CaptureState {
   setActivePage: (page: ActivePage) => void;
   setStream: (stream: MediaStream | null) => void;
   setCropArea: (cropArea: CropArea) => void;
-  addKeyColor: (color: Omit<KeyColor, 'label' | 'id'>) => { success: boolean, reason?: string };
+  addKeyColor: (color: Omit<KeyColor, 'label' | 'id' | 'minWidth' | 'minHeight'>) => { success: boolean, reason?: string };
   removeKeyColor: (id: string) => void;
   updateKeyColorLabel: (id: string, label: string) => void;
+  updateKeyColorConfig: (id: string, config: Partial<Pick<KeyColor, 'minWidth' | 'minHeight'>>) => void;
   reset: () => void;
 }
+
 
 export const useCapture = create<CaptureState>()(
 
@@ -64,7 +68,13 @@ export const useCapture = create<CaptureState>()(
         set((state) => ({
           keyColors: [
             ...state.keyColors,
-            { ...color, id: Math.random().toString(36).substr(2, 9), label: `Color ${state.keyColors.length + 1}` }
+            { 
+              ...color, 
+              id: Math.random().toString(36).substr(2, 9), 
+              label: `Color ${state.keyColors.length + 1}`,
+              minWidth: 1,  // Default 1%
+              minHeight: 1  // Default 1%
+            }
           ]
         }));
         return { success: true };
@@ -75,6 +85,9 @@ export const useCapture = create<CaptureState>()(
       updateKeyColorLabel: (id, label) => set((state) => ({
         keyColors: state.keyColors.map((c) => c.id === id ? { ...c, label } : c)
       })),
+      updateKeyColorConfig: (id, config) => set((state) => ({
+        keyColors: state.keyColors.map((c) => c.id === id ? { ...c, ...config } : c)
+      })),
       reset: () => set({ 
         step: 'SELECT_SOURCE', 
         activePage: 'START',
@@ -82,6 +95,7 @@ export const useCapture = create<CaptureState>()(
         cropArea: { x: 10, y: 10, width: 80, height: 80 },
         keyColors: []
       }),
+
     }),
     {
       name: 'mini-motorways-capture-storage',

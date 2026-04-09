@@ -5,10 +5,19 @@ import { rgbToHsl } from '../utils/colorUtils';
 
 const KeyColors: React.FC = () => {
 
-  const { stream, cropArea, keyColors, addKeyColor, removeKeyColor, updateKeyColorLabel } = useCapture();
+  const { 
+    stream, 
+    cropArea, 
+    keyColors, 
+    addKeyColor, 
+    removeKeyColor, 
+    updateKeyColorLabel,
+    updateKeyColorConfig 
+  } = useCapture();
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [error, setError] = useState<string | null>(null);
+
 
   useEffect(() => {
     if (stream && videoRef.current) {
@@ -127,7 +136,33 @@ const KeyColors: React.FC = () => {
                       <span className="color-format rgb">{color.rgb}</span>
                       <span className="color-format hsl">{color.hsl}</span>
                     </div>
+
+                    <div className="color-config">
+                      <div className="config-group">
+                        <label>Min W %</label>
+                        <input 
+                          type="number" 
+                          value={color.minWidth} 
+                          step="0.1"
+                          min="0"
+                          max="100"
+                          onChange={(e) => updateKeyColorConfig(color.id, { minWidth: parseFloat(e.target.value) || 0 })}
+                        />
+                      </div>
+                      <div className="config-group">
+                        <label>Min H %</label>
+                        <input 
+                          type="number" 
+                          value={color.minHeight} 
+                          step="0.1"
+                          min="0"
+                          max="100"
+                          onChange={(e) => updateKeyColorConfig(color.id, { minHeight: parseFloat(e.target.value) || 0 })}
+                        />
+                      </div>
+                    </div>
                   </div>
+
                   <button 
                     className="btn-icon delete" 
                     onClick={() => removeKeyColor(color.id)}
