@@ -16,6 +16,14 @@ const PageTabs: React.FC = () => {
         Setup
       </button>
       <button 
+        className={`tab-item ${activePage === 'COLORS' ? 'active' : ''} ${isDisplayDisabled ? 'disabled' : ''}`}
+        onClick={() => !isDisplayDisabled && setActivePage('COLORS')}
+        title={isDisplayDisabled ? 'Complete the setup first' : ''}
+      >
+        <span className="icon">🎨</span>
+        Colors
+      </button>
+      <button 
         className={`tab-item ${activePage === 'DISPLAY' ? 'active' : ''} ${isDisplayDisabled ? 'disabled' : ''}`}
         onClick={() => !isDisplayDisabled && setActivePage('DISPLAY')}
         title={isDisplayDisabled ? 'Complete the setup first' : ''}
@@ -23,6 +31,7 @@ const PageTabs: React.FC = () => {
         <span className="icon">📺</span>
         Display
       </button>
+
     </nav>
   );
 };

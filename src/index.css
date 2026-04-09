@@ -380,5 +380,154 @@ code {
   position: relative;
 }
 
+/* Eye-dropper Tool */
+.dropper-active {
+  cursor: crosshair;
+}
+
+.dropper-active::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  border: 2px solid transparent;
+  transition: border-color 0.2s;
+}
+
+.dropper-active:hover::after {
+  border-color: var(--accent);
+}
+
+/* Key Colors Page Layout */
+.colors-page {
+  animation: fadeIn 0.4s ease-out;
+}
+
+.colors-layout {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 32px;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+.palette-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: 24px;
+  box-shadow: var(--shadow);
+  height: fit-content;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.palette-card h3 {
+  margin-top: 0;
+  margin-bottom: 20px;
+  font-size: 1.25rem;
+  color: var(--text-h);
+}
+
+.color-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.empty-palette {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text);
+  opacity: 0.6;
+}
+
+.color-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: var(--social-bg);
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  transition: transform 0.2s;
+}
+
+.color-item:hover {
+  transform: translateX(4px);
+}
+
+.color-swatch {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: 2px solid white;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  flex-shrink: 0;
+}
+
+.color-info {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.color-label-input {
+  background: transparent;
+  border: none;
+  color: var(--text-h);
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 14px;
+  padding: 2px 0;
+  width: 100%;
+}
+
+.color-label-input:focus {
+  outline: none;
+  color: var(--accent);
+}
+
+.color-hex {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+  opacity: 0.8;
+}
+
+.btn-icon.delete {
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.btn-icon.delete:hover {
+  background: rgba(255, 68, 68, 0.1);
+  color: #ff4444;
+}
+
+@media (max-width: 900px) {
+  .colors-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+
 
 
