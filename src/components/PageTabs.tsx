@@ -31,6 +31,15 @@ const PageTabs: React.FC = () => {
         <span className="icon">📺</span>
         Display
       </button>
+      <button 
+        className={`tab-item ${activePage === 'DETECTION' ? 'active' : ''} ${isDisplayDisabled ? 'disabled' : ''}`}
+        onClick={() => !isDisplayDisabled && setActivePage('DETECTION')}
+        title={isDisplayDisabled ? 'Complete the setup first' : ''}
+      >
+        <span className="icon">🔍</span>
+        Detection
+      </button>
+
 
     </nav>
   );
