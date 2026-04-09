@@ -1,18 +1,11 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
+import { useCapture } from '../store/useCapture';
 
-type Step = 'SELECT_SOURCE' | 'WINDOW_MODE' | 'SELECT_AREA' | 'READY';
-
-interface CaptureFlowProps {
-  onCaptureComplete: (stream: MediaStream, cropArea: { x: number, y: number, width: number, height: number } | null) => void;
-}
-
-const CaptureFlow: React.FC<CaptureFlowProps> = ({ onCaptureComplete }) => {
-  const [step, setStep] = useState<Step>('SELECT_SOURCE');
-  const [stream, setStream] = useState<MediaStream | null>(null);
+const StartCapture: React.FC = () => {
+  const { step, stream, cropArea, setStep, setStream, setCropArea, setActivePage } = useCapture();
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   
-  const [crop, setCrop] = useState({ x: 10, y: 10, width: 80, height: 80 }); 
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState<string | null>(null);
   const [startPos, setStartPos] = useState({ x: 0, y: 0, cropX: 0, cropY: 0, cropW: 0, cropH: 0 });
@@ -36,25 +29,19 @@ const CaptureFlow: React.FC<CaptureFlowProps> = ({ onCaptureComplete }) => {
     }
   }, [stream, step]);
 
-  const handleWindowMode = (windowed: boolean) => {
-    if (windowed) {
-      setStep('SELECT_AREA');
-    } else {
-      finish(null);
-    }
-  };
-
   const onMouseDown = (e: React.MouseEvent, type: string | null) => {
     e.preventDefault();
+    e.stopPropagation(); 
+    
     if (!containerRef.current) return;
     
     setStartPos({
       x: e.clientX,
       y: e.clientY,
-      cropX: crop.x,
-      cropY: crop.y,
-      cropW: crop.width,
-      cropH: crop.height
+      cropX: cropArea.x,
+      cropY: cropArea.y,
+      cropW: cropArea.width,
+      cropH: cropArea.height
     });
 
     if (type === 'move') {
@@ -74,28 +61,30 @@ const CaptureFlow: React.FC<CaptureFlowProps> = ({ onCaptureComplete }) => {
       const dy = ((e.clientY - startPos.y) / rect.height) * 100;
 
       if (isDragging) {
-        setCrop(prev => ({
-          ...prev,
-          x: Math.max(0, Math.min(100 - prev.width, startPos.cropX + dx)),
-          y: Math.max(0, Math.min(100 - prev.height, startPos.cropY + dy))
-        }));
-      } else if (isResizing) {
-        setCrop(prev => {
-          let { x, y, width, height } = { ...prev };
-          if (isResizing.includes('e')) width = Math.max(5, Math.min(100 - x, startPos.cropW + dx));
-          if (isResizing.includes('s')) height = Math.max(5, Math.min(100 - y, startPos.cropH + dy));
-          if (isResizing.includes('w')) {
-            const newX = Math.max(0, Math.min(prev.x + prev.width - 5, startPos.cropX + dx));
-            width = startPos.cropW - (newX - startPos.cropX);
-            x = newX;
-          }
-          if (isResizing.includes('n')) {
-            const newY = Math.max(0, Math.min(prev.y + prev.height - 5, startPos.cropY + dy));
-            height = startPos.cropH - (newY - startPos.cropY);
-            y = newY;
-          }
-          return { x, y, width, height };
+        setCropArea({
+          ...cropArea,
+          x: Math.max(0, Math.min(100 - startPos.cropW, startPos.cropX + dx)),
+          y: Math.max(0, Math.min(100 - startPos.cropH, startPos.cropY + dy))
         });
+      } else if (isResizing) {
+        let x = startPos.cropX;
+        let y = startPos.cropY;
+        let width = startPos.cropW;
+        let height = startPos.cropH;
+        
+        if (isResizing.includes('e')) width = Math.max(5, Math.min(100 - x, startPos.cropW + dx));
+        if (isResizing.includes('s')) height = Math.max(5, Math.min(100 - y, startPos.cropH + dy));
+        if (isResizing.includes('w')) {
+          const newX = Math.max(0, Math.min(startPos.cropX + startPos.cropW - 5, startPos.cropX + dx));
+          width = startPos.cropW - (newX - startPos.cropX);
+          x = newX;
+        }
+        if (isResizing.includes('n')) {
+          const newY = Math.max(0, Math.min(startPos.cropY + startPos.cropH - 5, startPos.cropY + dy));
+          height = startPos.cropH - (newY - startPos.cropY);
+          y = newY;
+        }
+        setCropArea({ x, y, width, height });
       }
     };
 
@@ -112,12 +101,14 @@ const CaptureFlow: React.FC<CaptureFlowProps> = ({ onCaptureComplete }) => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging, isResizing, startPos]);
+  }, [isDragging, isResizing, startPos, setCropArea, cropArea.width, cropArea.height]);
 
-  const finish = (finalCrop: typeof crop | null) => {
-    if (stream) {
-      onCaptureComplete(stream, finalCrop);
+  const handleWindowMode = (windowed: boolean) => {
+    if (windowed) {
+      setStep('SELECT_AREA');
+    } else {
       setStep('READY');
+      setActivePage('DISPLAY');
     }
   };
 
@@ -154,10 +145,10 @@ const CaptureFlow: React.FC<CaptureFlowProps> = ({ onCaptureComplete }) => {
                   className="crop-box" 
                   onMouseDown={(e) => onMouseDown(e, 'move')}
                   style={{ 
-                    left: `${crop.x}%`, 
-                    top: `${crop.y}%`, 
-                    width: `${crop.width}%`, 
-                    height: `${crop.height}%` 
+                    left: `${cropArea.x}%`, 
+                    top: `${cropArea.y}%`, 
+                    width: `${cropArea.width}%`, 
+                    height: `${cropArea.height}%` 
                   }}
                 >
                   <div className="crop-handle nw" onMouseDown={(e) => onMouseDown(e, 'nw')} />
@@ -171,7 +162,7 @@ const CaptureFlow: React.FC<CaptureFlowProps> = ({ onCaptureComplete }) => {
                 </div>
               </div>
             </div>
-            <button className="btn-primary" onClick={() => finish(crop)}>Confirm Area</button>
+            <button className="btn-primary" onClick={() => { setStep('READY'); setActivePage('DISPLAY'); } }>Confirm Area</button>
           </div>
         );
       case 'READY':
@@ -182,7 +173,7 @@ const CaptureFlow: React.FC<CaptureFlowProps> = ({ onCaptureComplete }) => {
             <div className="stream-preview mini">
               <video ref={videoRef} autoPlay playsInline muted />
             </div>
-            <button className="btn-secondary" onClick={() => setStep('SELECT_SOURCE')}>Reset Capture</button>
+            <button className="btn-secondary" onClick={() => setActivePage('DISPLAY')}>Go to Display</button>
           </div>
         );
     }
@@ -195,4 +186,5 @@ const CaptureFlow: React.FC<CaptureFlowProps> = ({ onCaptureComplete }) => {
   );
 };
 
-export default CaptureFlow;
+export default StartCapture;
+
