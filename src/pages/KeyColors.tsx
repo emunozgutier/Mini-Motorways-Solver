@@ -1,10 +1,36 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { useCapture } from '../store/useCapture';
 
+const rgbToHsl = (r: number, g: number, b: number) => {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h = 0, s, l = (max + min) / 2;
+
+  if (max === min) {
+    h = s = 0;
+  } else {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+      case g: h = (b - r) / d + 2; break;
+      case b: h = (r - g) / d + 4; break;
+    }
+    h /= 6;
+  }
+
+  return {
+    h: Math.round(h * 360),
+    s: Math.round(s * 100),
+    l: Math.round(l * 100)
+  };
+};
+
 const KeyColors: React.FC = () => {
   const { stream, cropArea, keyColors, addKeyColor, removeKeyColor, updateKeyColorLabel } = useCapture();
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (stream && videoRef.current) {
@@ -48,8 +74,15 @@ const KeyColors: React.FC = () => {
 
     const hex = `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
     const rgb = `rgb(${r}, ${g}, ${b})`;
+    const hslData = rgbToHsl(r, g, b);
+    const hsl = `H: ${hslData.h}°, S: ${hslData.s}%, L: ${hslData.l}%`;
 
-    addKeyColor({ hex, rgb });
+    const result = addKeyColor({ hex, rgb, hsl, h: hslData.h });
+    
+    if (!result.success) {
+      setError(result.reason || 'Failed to add color');
+      setTimeout(() => setError(null), 3000);
+    }
   };
 
   const scaleX = 100 / cropArea.width;
@@ -59,6 +92,7 @@ const KeyColors: React.FC = () => {
 
   return (
     <div className="colors-page">
+      {error && <div className="error-toast">{error}</div>}
       <div className="colors-layout">
         <div className="sampler-section">
           <div className="display-card">
@@ -110,7 +144,11 @@ const KeyColors: React.FC = () => {
                       onChange={(e) => updateKeyColorLabel(color.id, e.target.value)}
                       className="color-label-input"
                     />
-                    <span className="color-hex">{color.hex}</span>
+                    <div className="color-formats">
+                      <span className="color-format hex">{color.hex}</span>
+                      <span className="color-format rgb">{color.rgb}</span>
+                      <span className="color-format hsl">{color.hsl}</span>
+                    </div>
                   </div>
                   <button 
                     className="btn-icon delete" 
