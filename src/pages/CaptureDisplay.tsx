@@ -21,11 +21,11 @@ const CaptureDisplay: React.FC = () => {
   }
 
   // Calculate the scaling and positioning for the cropped view
-  // We use the inverse of the percentages to scale up the video
   const scaleX = 100 / cropArea.width;
   const scaleY = 100 / cropArea.height;
-  const translateX = -cropArea.x * scaleX;
-  const translateY = -cropArea.y * scaleY;
+  const translateX = -cropArea.x;
+  const translateY = -cropArea.y;
+
 
   return (
     <div className="display-container">
