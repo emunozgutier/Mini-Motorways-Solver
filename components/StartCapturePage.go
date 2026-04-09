@@ -68,6 +68,13 @@ func (c *InteractiveCapture) CreateRenderer() fyne.WidgetRenderer {
 
 func (r *captureRenderer) Layout(size fyne.Size) {
 	r.img.Resize(size)
+	r.updatePositions(size)
+}
+
+func (r *captureRenderer) updatePositions(size fyne.Size) {
+	if size.Width <= 0 || size.Height <= 0 {
+		return
+	}
 
 	// Calculate corner positions
 	hSize := float32(40)
@@ -81,6 +88,7 @@ func (r *captureRenderer) Layout(size fyne.Size) {
 	for i := 0; i < 4; i++ {
 		r.handles[i].Move(pos[i].Subtract(fyne.NewPos(hSize/2, hSize/2)))
 		r.handles[i].Resize(fyne.NewSize(hSize, hSize))
+		r.handles[i].Refresh()
 	}
 
 	minX := minF(pos[0].X, pos[1].X, pos[2].X, pos[3].X)
@@ -90,6 +98,7 @@ func (r *captureRenderer) Layout(size fyne.Size) {
 
 	r.cropRect.Move(fyne.NewPos(minX, minY))
 	r.cropRect.Resize(fyne.NewSize(maxX-minX, maxY-minY))
+	r.cropRect.Refresh()
 }
 
 func (r *captureRenderer) MinSize() fyne.Size {
@@ -103,6 +112,7 @@ func (r *captureRenderer) Refresh() {
 	}
 	store.Capture.RUnlock()
 	r.img.Refresh()
+	r.updatePositions(r.ic.Size())
 	canvas.Refresh(r.ic)
 }
 
@@ -175,6 +185,7 @@ func (c *InteractiveCapture) Dragged(e *fyne.DragEvent) {
 			c.px2 = clamp(c.px2 + dx)
 			c.py2 = clamp(c.py2 + dy)
 		}
+		fmt.Printf("!!! NEW PCT: TL(%.3f, %.3f) BR(%.3f, %.3f)\n", c.px1, c.py1, c.px2, c.py2)
 		c.Refresh()
 	}
 }
