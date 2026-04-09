@@ -42,10 +42,8 @@ func (h *handle) MinSize() fyne.Size {
 }
 
 func (h *handle) Dragged(e *fyne.DragEvent) {
-	// Calculate absolute position in parent
-	newPos := h.Position().Add(e.Dragged).Add(fyne.NewPos(h.Size().Width/2, h.Size().Height/2))
 	if h.onDragged != nil {
-		h.onDragged(h.id, newPos)
+		h.onDragged(h.id, fyne.NewPos(e.Dragged.DX, e.Dragged.DY))
 	}
 	h.Refresh()
 }
@@ -192,39 +190,52 @@ func CreateStartCapturePage(w fyne.Window) *fyne.Container {
 	)
 }
 
-func (p *StartCapturePage) syncHandles(id int, pos fyne.Position) {
+func (p *StartCapturePage) syncHandles(id int, delta fyne.Position) {
 	size := p.PreviewImg.Size()
 	if size.Width == 0 || size.Height == 0 {
 		return
 	}
 
-	// Clamp pos to container bounds
-	if pos.X < 0 { pos.X = 0 }
-	if pos.X > size.Width { pos.X = size.Width }
-	if pos.Y < 0 { pos.Y = 0 }
-	if pos.Y > size.Height { pos.Y = size.Height }
+	// Calculate delta in percentages
+	dx := delta.X / size.Width
+	dy := delta.Y / size.Height
 
-	// Update our internal percentages
-	switch id {
-	case 0: // TL
-		p.PctX1 = pos.X / size.Width
-		p.PctY1 = pos.Y / size.Height
-	case 1: // TR
-		p.PctX2 = pos.X / size.Width
-		p.PctY1 = pos.Y / size.Height
-	case 2: // BL
-		p.PctX1 = pos.X / size.Width
-		p.PctY2 = pos.Y / size.Height
-	case 3: // BR
-		p.PctX2 = pos.X / size.Width
-		p.PctY2 = pos.Y / size.Height
+	// Update our internal percentages with clamping
+	clamp := func(v float32) float32 {
+		if v < 0 { return 0 }
+		if v > 1 { return 1 }
+		return v
 	}
 
-	p.updateZoom(pos)
+	switch id {
+	case 0: // TL
+		p.PctX1 = clamp(p.PctX1 + dx)
+		p.PctY1 = clamp(p.PctY1 + dy)
+	case 1: // TR
+		p.PctX2 = clamp(p.PctX2 + dx)
+		p.PctY1 = clamp(p.PctY1 + dy)
+	case 2: // BL
+		p.PctX1 = clamp(p.PctX1 + dx)
+		p.PctY2 = clamp(p.PctY2 + dy)
+	case 3: // BR
+		p.PctX2 = clamp(p.PctX2 + dx)
+		p.PctY2 = clamp(p.PctY2 + dy)
+	}
+
+	// Calculate current UI position for zoom mapping
+	var currentPos fyne.Position
+	switch id {
+	case 0: currentPos = fyne.NewPos(p.PctX1*size.Width, p.PctY1*size.Height)
+	case 1: currentPos = fyne.NewPos(p.PctX2*size.Width, p.PctY1*size.Height)
+	case 2: currentPos = fyne.NewPos(p.PctX1*size.Width, p.PctY2*size.Height)
+	case 3: currentPos = fyne.NewPos(p.PctX2*size.Width, p.PctY2*size.Height)
+	}
+
+	p.updateZoom(id, currentPos)
 	p.syncCropRect()
 }
 
-func (p *StartCapturePage) updateZoom(pos fyne.Position) {
+func (p *StartCapturePage) updateZoom(id int, pos fyne.Position) {
 	p.mu.Lock()
 	baseImg := store.Capture.BaseImage
 	p.mu.Unlock()
@@ -236,7 +247,7 @@ func (p *StartCapturePage) updateZoom(pos fyne.Position) {
 	// Map UI pos to image pixels
 	x, y := p.pixelAt(pos)
 	
-	// Create a zoom crop (50x50 pixels around mouse)
+	// Create a zoom crop (40x40 pixels around mouse)
 	zoomSize := 40
 	rect := image.Rect(x-zoomSize/2, y-zoomSize/2, x+zoomSize/2, y+zoomSize/2)
 	
@@ -253,17 +264,20 @@ func (p *StartCapturePage) updateZoom(pos fyne.Position) {
 	p.ZoomImg.Image = zoomCrop
 	p.ZoomImg.Refresh()
 
-	// Position ZoomContainer near mouse
-	offset := float32(20)
-	zoomPos := pos.Add(fyne.NewPos(offset, offset))
-	// If too close to edge, move to other side
-	if zoomPos.X + 120 > p.PreviewImg.Size().Width {
-		zoomPos.X = pos.X - 120 - offset
+	// Relocate ZoomContainer to a fixed corner FAR from the handle
+	size := p.PreviewImg.Size()
+	margin := float32(10)
+	zoomW := float32(120)
+
+	// Choose TL or TR corner depending on handle position
+	if pos.X > size.Width/2 {
+		// Handle is on the right, put zoom on the left
+		p.ZoomContainer.Move(fyne.NewPos(margin, margin))
+	} else {
+		// Handle is on the left, put zoom on the right
+		p.ZoomContainer.Move(fyne.NewPos(size.Width-zoomW-margin, margin))
 	}
-	if zoomPos.Y + 120 > p.PreviewImg.Size().Height {
-		zoomPos.Y = pos.Y - 120 - offset
-	}
-	p.ZoomContainer.Move(zoomPos)
+	
 	p.ZoomContainer.Show()
 }
 
