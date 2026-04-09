@@ -42,6 +42,7 @@ func (h *handle) MinSize() fyne.Size {
 }
 
 func (h *handle) Dragged(e *fyne.DragEvent) {
+	fmt.Printf("Handle %d dragged: delta(%.2f, %.2f)\n", h.id, e.Dragged.DX, e.Dragged.DY)
 	if h.onDragged != nil {
 		h.onDragged(h.id, fyne.NewPos(e.Dragged.DX, e.Dragged.DY))
 	}
@@ -123,7 +124,9 @@ func CreateStartCapturePage(w fyne.Window) *fyne.Container {
 
 
 	// Max image and overlay together
-	previewStack := container.NewMax(page.PreviewImg, overlay, container.NewWithoutLayout(page.ZoomContainer))
+	// IMPORTANT: order matters. The LAST item is on TOP.
+	// We put overlay (handles) last so they are accessible to mouse events.
+	previewStack := container.NewMax(page.PreviewImg, container.NewWithoutLayout(page.ZoomContainer), overlay)
 
 	numDisplays := screenshot.NumActiveDisplays()
 	var displayOptions []string
@@ -357,6 +360,7 @@ func (l *cropLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
 	for i := 0; i < 4; i++ {
 		// Move handle such that it is CENTERED on the corner
 		p.Handles[i].Move(pos[i].Subtract(fyne.NewPos(hSize/2, hSize/2)))
+		p.Handles[i].Resize(fyne.NewSize(hSize, hSize))
 	}
 
 	// Position red box
