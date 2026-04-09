@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"math"
 	"sync"
 	"time"
 
@@ -32,7 +33,7 @@ func newInteractiveCapture(page *StartCapturePage) *InteractiveCapture {
 	c := &InteractiveCapture{
 		page:         page,
 		px1:          0.1, py1: 0.1,
-		px2:          0.3, py2: 0.3,
+		px2:          0.9, py2: 0.9,
 		activeHandle: -1,
 	}
 	c.ExtendBaseWidget(c)
@@ -69,7 +70,7 @@ func (r *captureRenderer) Layout(size fyne.Size) {
 	r.img.Resize(size)
 
 	// Calculate corner positions
-	hSize := float32(20)
+	hSize := float32(40)
 	pos := [4]fyne.Position{
 		{X: r.ic.px1 * size.Width, Y: r.ic.py1 * size.Height},
 		{X: r.ic.px2 * size.Width, Y: r.ic.py1 * size.Height},
@@ -117,11 +118,11 @@ func (c *InteractiveCapture) Dragged(e *fyne.DragEvent) {
 		return
 	}
 
-	// On first drag, find the best handle
+	// Magnetic handle selection: find closest corner and snap it to cursor
 	if c.activeHandle == -1 {
 		dist := func(x, y float32) float32 {
-			dx := x - e.PointEvent.Position.X
-			dy := y - e.PointEvent.Position.Y
+			dx := x - e.Position.X
+			dy := y - e.Position.Y
 			return dx*dx + dy*dy
 		}
 		
@@ -129,8 +130,15 @@ func (c *InteractiveCapture) Dragged(e *fyne.DragEvent) {
 			dist(c.px1*size.Width, c.py1*size.Height),
 			dist(c.px2*size.Width, c.py1*size.Height),
 			dist(c.px1*size.Width, c.py2*size.Height),
-			dist(c.px2*size.Width, c.py2*size.Height),
+			dist(c.px2*size.Width, c.py1*size.Height), // Wait, fixed typo in handle 3 calc
 		}
+		// Corrected the indices for the 4 corners:
+		// 0: (px1, py1) - TL
+		// 1: (px2, py1) - TR
+		// 2: (px1, py2) - BL
+		// 3: (px2, py2) - BR
+		dists[2] = dist(c.px1*size.Width, c.py2*size.Height)
+		dists[3] = dist(c.px2*size.Width, c.py2*size.Height)
 
 		closest := 0
 		for i := 1; i < 4; i++ {
@@ -139,10 +147,8 @@ func (c *InteractiveCapture) Dragged(e *fyne.DragEvent) {
 			}
 		}
 		
-		// Only activate if within range (say 40 pixels)
-		if dists[closest] < 1600 {
-			c.activeHandle = closest
-		}
+		c.activeHandle = closest
+		fmt.Printf("!!! SNAPPED to handle %d at distance %.0f\n", c.activeHandle, math.Sqrt(float64(dists[closest])))
 	}
 
 	if c.activeHandle != -1 {
@@ -174,7 +180,12 @@ func (c *InteractiveCapture) Dragged(e *fyne.DragEvent) {
 }
 
 func (c *InteractiveCapture) DragEnd() {
+	fmt.Println("!!! DRAG END")
 	c.activeHandle = -1
+}
+
+func (c *InteractiveCapture) Tapped(e *fyne.PointEvent) {
+	fmt.Printf("!!! TAPPED at pos(%.2f, %.2f)\n", e.Position.X, e.Position.Y)
 }
 
 /*
