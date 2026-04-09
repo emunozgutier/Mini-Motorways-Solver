@@ -4,11 +4,10 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"image/draw"
 	"sync"
 	"time"
 
-	"fyne.io/fyne/v2"
+	fyne "fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
@@ -16,42 +15,173 @@ import (
 	"github.com/kbinani/screenshot"
 )
 
-// handle is a small cyan square that can be dragged
-type handle struct {
+// InteractiveCapture is a unified widget that handles screenshot display,
+// rectangular selection area, and draggable corners in a single layer.
+type InteractiveCapture struct {
 	widget.BaseWidget
-	id        int
-	page      *StartCapturePage
-	onDragged func(int, fyne.Position)
+	page *StartCapturePage
+
+	// Internal state for the selection (Normalized 0.0 - 1.0)
+	px1, py1 float32
+	px2, py2 float32
+
+	activeHandle int // -1 for none, 0-3 for corners
 }
 
-func newHandle(id int, page *StartCapturePage, onDragged func(int, fyne.Position)) *handle {
-	h := &handle{id: id, page: page, onDragged: onDragged}
-	h.ExtendBaseWidget(h)
-	return h
-}
-
-func (h *handle) CreateRenderer() fyne.WidgetRenderer {
-	rect := canvas.NewRectangle(color.RGBA{R: 0, G: 255, B: 255, A: 255})
-	rect.StrokeColor = color.Black
-	rect.StrokeWidth = 1
-	return widget.NewSimpleRenderer(rect)
-}
-
-func (h *handle) MinSize() fyne.Size {
-	return fyne.NewSize(20, 20)
-}
-
-func (h *handle) Dragged(e *fyne.DragEvent) {
-	fmt.Printf("Handle %d dragged: delta(%.2f, %.2f)\n", h.id, e.Dragged.DX, e.Dragged.DY)
-	if h.onDragged != nil {
-		h.onDragged(h.id, fyne.NewPos(e.Dragged.DX, e.Dragged.DY))
+func newInteractiveCapture(page *StartCapturePage) *InteractiveCapture {
+	c := &InteractiveCapture{
+		page:         page,
+		px1:          0.1, py1: 0.1,
+		px2:          0.3, py2: 0.3,
+		activeHandle: -1,
 	}
-	h.Refresh()
+	c.ExtendBaseWidget(c)
+	return c
 }
 
-func (h *handle) DragEnd() {
-	h.page.ZoomContainer.Hide()
+type captureRenderer struct {
+	ic *InteractiveCapture
+
+	img      *canvas.Image
+	cropRect *canvas.Rectangle
+	handles  [4]*canvas.Rectangle
 }
+
+func (c *InteractiveCapture) CreateRenderer() fyne.WidgetRenderer {
+	r := &captureRenderer{ic: c}
+	r.img = canvas.NewImageFromImage(image.NewRGBA(image.Rect(0, 0, 800, 600)))
+	r.img.FillMode = canvas.ImageFillContain
+
+	r.cropRect = canvas.NewRectangle(color.Transparent)
+	r.cropRect.StrokeColor = color.RGBA{R: 255, G: 0, B: 0, A: 255}
+	r.cropRect.StrokeWidth = 2
+
+	for i := 0; i < 4; i++ {
+		r.handles[i] = canvas.NewRectangle(color.RGBA{R: 0, G: 255, B: 255, A: 255})
+		r.handles[i].StrokeColor = color.Black
+		r.handles[i].StrokeWidth = 1
+	}
+
+	return r
+}
+
+func (r *captureRenderer) Layout(size fyne.Size) {
+	r.img.Resize(size)
+
+	// Calculate corner positions
+	hSize := float32(20)
+	pos := [4]fyne.Position{
+		{X: r.ic.px1 * size.Width, Y: r.ic.py1 * size.Height},
+		{X: r.ic.px2 * size.Width, Y: r.ic.py1 * size.Height},
+		{X: r.ic.px1 * size.Width, Y: r.ic.py2 * size.Height},
+		{X: r.ic.px2 * size.Width, Y: r.ic.py2 * size.Height},
+	}
+
+	for i := 0; i < 4; i++ {
+		r.handles[i].Move(pos[i].Subtract(fyne.NewPos(hSize/2, hSize/2)))
+		r.handles[i].Resize(fyne.NewSize(hSize, hSize))
+	}
+
+	minX := minF(pos[0].X, pos[1].X, pos[2].X, pos[3].X)
+	minY := minF(pos[0].Y, pos[1].Y, pos[2].Y, pos[3].Y)
+	maxX := maxF(pos[0].X, pos[1].X, pos[2].X, pos[3].X)
+	maxY := maxF(pos[0].Y, pos[1].Y, pos[2].Y, pos[3].Y)
+
+	r.cropRect.Move(fyne.NewPos(minX, minY))
+	r.cropRect.Resize(fyne.NewSize(maxX-minX, maxY-minY))
+}
+
+func (r *captureRenderer) MinSize() fyne.Size {
+	return fyne.NewSize(100, 100)
+}
+
+func (r *captureRenderer) Refresh() {
+	store.Capture.RLock()
+	if store.Capture.BaseImage != nil {
+		r.img.Image = store.Capture.BaseImage
+	}
+	store.Capture.RUnlock()
+	r.img.Refresh()
+	canvas.Refresh(r.ic)
+}
+
+func (r *captureRenderer) Objects() []fyne.CanvasObject {
+	return []fyne.CanvasObject{r.img, r.cropRect, r.handles[0], r.handles[1], r.handles[2], r.handles[3]}
+}
+
+func (r *captureRenderer) Destroy() {}
+
+func (c *InteractiveCapture) Dragged(e *fyne.DragEvent) {
+	size := c.Size()
+	if size.Width <= 0 || size.Height <= 0 {
+		return
+	}
+
+	// On first drag, find the best handle
+	if c.activeHandle == -1 {
+		dist := func(x, y float32) float32 {
+			dx := x - e.PointEvent.Position.X
+			dy := y - e.PointEvent.Position.Y
+			return dx*dx + dy*dy
+		}
+		
+		dists := []float32{
+			dist(c.px1*size.Width, c.py1*size.Height),
+			dist(c.px2*size.Width, c.py1*size.Height),
+			dist(c.px1*size.Width, c.py2*size.Height),
+			dist(c.px2*size.Width, c.py2*size.Height),
+		}
+
+		closest := 0
+		for i := 1; i < 4; i++ {
+			if dists[i] < dists[closest] {
+				closest = i
+			}
+		}
+		
+		// Only activate if within range (say 40 pixels)
+		if dists[closest] < 1600 {
+			c.activeHandle = closest
+		}
+	}
+
+	if c.activeHandle != -1 {
+		dx := e.Dragged.DX / size.Width
+		dy := e.Dragged.DY / size.Height
+
+		clamp := func(v float32) float32 {
+			if v < 0 { return 0 }
+			if v > 1 { return 1 }
+			return v
+		}
+
+		switch c.activeHandle {
+		case 0: // TL
+			c.px1 = clamp(c.px1 + dx)
+			c.py1 = clamp(c.py1 + dy)
+		case 1: // TR
+			c.px2 = clamp(c.px2 + dx)
+			c.py1 = clamp(c.py1 + dy)
+		case 2: // BL
+			c.px1 = clamp(c.px1 + dx)
+			c.py2 = clamp(c.py2 + dy)
+		case 3: // BR
+			c.px2 = clamp(c.px2 + dx)
+			c.py2 = clamp(c.py2 + dy)
+		}
+		c.Refresh()
+	}
+}
+
+func (c *InteractiveCapture) DragEnd() {
+	c.activeHandle = -1
+}
+
+/*
+func (c *InteractiveCapture) Cursor() fyne.Cursor {
+	return fyne.CursorCrosshair
+}
+*/
 
 // StartCapturePage handles the screen capture setup page
 type StartCapturePage struct {
@@ -60,19 +190,10 @@ type StartCapturePage struct {
 	DisplaySelect *widget.Select
 	ModeRadio     *widget.RadioGroup
 
-	PreviewImg *canvas.Image
-	CropRect   *canvas.Rectangle
-	Handles    [4]*handle // TL, TR, BL, BR
-
 	anim       *fyne.Animation
 	stopTicker chan struct{}
 
-	// Normalized coordinates (0.0 to 1.0) for responsive layout
-	PctX1, PctY1 float32
-	PctX2, PctY2 float32
-
-	ZoomContainer *fyne.Container
-	ZoomImg       *canvas.Image
+	CaptureView *InteractiveCapture
 }
 
 func CreateStartCapturePage(w fyne.Window) *fyne.Container {
@@ -80,53 +201,7 @@ func CreateStartCapturePage(w fyne.Window) *fyne.Container {
 		stopTicker: make(chan struct{}),
 	}
 
-	page.PreviewImg = canvas.NewImageFromImage(image.NewRGBA(image.Rect(0, 0, 800, 600)))
-	page.PreviewImg.FillMode = canvas.ImageFillContain
-
-	// Red rectangle for crop area
-	page.CropRect = canvas.NewRectangle(color.Transparent)
-	page.CropRect.StrokeColor = color.RGBA{R: 255, G: 0, B: 0, A: 255}
-	page.CropRect.StrokeWidth = 2
-
-	// Setup handles
-	updateCrop := func(id int, pos fyne.Position) {
-		page.syncHandles(id, pos)
-	}
-	for i := 0; i < 4; i++ {
-		page.Handles[i] = newHandle(i, page, updateCrop)
-		page.Handles[i].Resize(page.Handles[i].MinSize())
-	}
-
-	// Default positions from store (convert pixels to percentages based on first capture)
-	page.PctX1, page.PctY1 = 0.1, 0.1
-	page.PctX2, page.PctY2 = 0.3, 0.3
-
-	overlay := container.New(&cropLayout{page: page},
-		page.CropRect,
-		page.Handles[0], page.Handles[1], page.Handles[2], page.Handles[3],
-	)
-
-	// Zoom view (magnifier)
-	page.ZoomImg = canvas.NewImageFromImage(image.NewRGBA(image.Rect(0, 0, 100, 100)))
-	page.ZoomImg.FillMode = canvas.ImageFillStretch
-	page.ZoomContainer = container.NewStack(
-		canvas.NewRectangle(color.Black), // Background
-		page.ZoomImg,
-		canvas.NewRectangle(color.Transparent), // Border
-	)
-	page.ZoomContainer.Hide()
-	page.ZoomContainer.Resize(fyne.NewSize(120, 120))
-	
-	// Add a small red crosshair to the zoom view center
-	crosshairH := canvas.NewLine(color.RGBA{R: 255, G: 0, B: 0, A: 128})
-	crosshairV := canvas.NewLine(color.RGBA{R: 255, G: 0, B: 0, A: 128})
-	page.ZoomContainer.Objects = append(page.ZoomContainer.Objects, crosshairH, crosshairV)
-
-
-	// Max image and overlay together
-	// IMPORTANT: order matters. The LAST item is on TOP.
-	// We put overlay (handles) last so they are accessible to mouse events.
-	previewStack := container.NewMax(page.PreviewImg, container.NewWithoutLayout(page.ZoomContainer), overlay)
+	page.CaptureView = newInteractiveCapture(page)
 
 	numDisplays := screenshot.NumActiveDisplays()
 	var displayOptions []string
@@ -143,10 +218,8 @@ func CreateStartCapturePage(w fyne.Window) *fyne.Container {
 		store.Capture.Lock()
 		if s == "Fullscreen" {
 			store.Capture.IsFullscreen = true
-			overlay.Hide()
 		} else {
 			store.Capture.IsFullscreen = false
-			overlay.Show()
 		}
 		store.Capture.Unlock()
 	})
@@ -177,8 +250,7 @@ func CreateStartCapturePage(w fyne.Window) *fyne.Container {
 		interval := store.Capture.GetInterval()
 		if time.Since(lastCapture) >= interval {
 			page.updateBaseImage()
-			page.PreviewImg.Refresh()
-			page.CropRect.Refresh()
+			page.CaptureView.Refresh()
 			lastCapture = time.Now()
 		}
 	})
@@ -189,105 +261,8 @@ func CreateStartCapturePage(w fyne.Window) *fyne.Container {
 		form,
 		startBtn,
 		nil, nil,
-		previewStack,
+		page.CaptureView,
 	)
-}
-
-func (p *StartCapturePage) syncHandles(id int, delta fyne.Position) {
-	size := p.PreviewImg.Size()
-	if size.Width == 0 || size.Height == 0 {
-		return
-	}
-
-	// Calculate delta in percentages
-	dx := delta.X / size.Width
-	dy := delta.Y / size.Height
-
-	// Update our internal percentages with clamping
-	clamp := func(v float32) float32 {
-		if v < 0 { return 0 }
-		if v > 1 { return 1 }
-		return v
-	}
-
-	switch id {
-	case 0: // TL
-		p.PctX1 = clamp(p.PctX1 + dx)
-		p.PctY1 = clamp(p.PctY1 + dy)
-	case 1: // TR
-		p.PctX2 = clamp(p.PctX2 + dx)
-		p.PctY1 = clamp(p.PctY1 + dy)
-	case 2: // BL
-		p.PctX1 = clamp(p.PctX1 + dx)
-		p.PctY2 = clamp(p.PctY2 + dy)
-	case 3: // BR
-		p.PctX2 = clamp(p.PctX2 + dx)
-		p.PctY2 = clamp(p.PctY2 + dy)
-	}
-
-	// Calculate current UI position for zoom mapping
-	var currentPos fyne.Position
-	switch id {
-	case 0: currentPos = fyne.NewPos(p.PctX1*size.Width, p.PctY1*size.Height)
-	case 1: currentPos = fyne.NewPos(p.PctX2*size.Width, p.PctY1*size.Height)
-	case 2: currentPos = fyne.NewPos(p.PctX1*size.Width, p.PctY2*size.Height)
-	case 3: currentPos = fyne.NewPos(p.PctX2*size.Width, p.PctY2*size.Height)
-	}
-
-	p.updateZoom(id, currentPos)
-	p.syncCropRect()
-}
-
-func (p *StartCapturePage) updateZoom(id int, pos fyne.Position) {
-	p.mu.Lock()
-	baseImg := store.Capture.BaseImage
-	p.mu.Unlock()
-
-	if baseImg == nil {
-		return
-	}
-
-	// Map UI pos to image pixels
-	x, y := p.pixelAt(pos)
-	
-	// Create a zoom crop (40x40 pixels around mouse)
-	zoomSize := 40
-	rect := image.Rect(x-zoomSize/2, y-zoomSize/2, x+zoomSize/2, y+zoomSize/2)
-	
-	// Ensure rect is within image
-	bounds := baseImg.Bounds()
-	if rect.Min.X < 0 { rect = rect.Add(image.Pt(-rect.Min.X, 0)) }
-	if rect.Max.X > bounds.Max.X { rect = rect.Add(image.Pt(bounds.Max.X-rect.Max.X, 0)) }
-	if rect.Min.Y < 0 { rect = rect.Add(image.Pt(0, -rect.Min.Y)) }
-	if rect.Max.Y > bounds.Max.Y { rect = rect.Add(image.Pt(0, bounds.Max.Y-rect.Max.Y)) }
-
-	zoomCrop := image.NewRGBA(image.Rect(0, 0, zoomSize, zoomSize))
-	draw.Draw(zoomCrop, zoomCrop.Bounds(), baseImg, rect.Min, draw.Src)
-	
-	p.ZoomImg.Image = zoomCrop
-	p.ZoomImg.Refresh()
-
-	// Relocate ZoomContainer to a fixed corner FAR from the handle
-	size := p.PreviewImg.Size()
-	margin := float32(10)
-	zoomW := float32(120)
-
-	// Choose TL or TR corner depending on handle position
-	if pos.X > size.Width/2 {
-		// Handle is on the right, put zoom on the left
-		p.ZoomContainer.Move(fyne.NewPos(margin, margin))
-	} else {
-		// Handle is on the left, put zoom on the right
-		p.ZoomContainer.Move(fyne.NewPos(size.Width-zoomW-margin, margin))
-	}
-	
-	p.ZoomContainer.Show()
-}
-
-func (p *StartCapturePage) syncCropRect() {
-	// Re-layout handles based on percentages and redraw rect
-	// The layout handles it, but we need to refresh the red box
-	p.CropRect.Refresh()
 }
 
 func (p *StartCapturePage) GetCropPixels() (int, int, int, int) {
@@ -299,13 +274,13 @@ func (p *StartCapturePage) GetCropPixels() (int, int, int, int) {
 		return 0, 0, 0, 0
 	}
 
-	size := p.PreviewImg.Size()
-	x1, y1 := p.pixelAt(fyne.NewPos(p.PctX1 * size.Width, p.PctY1 * size.Height))
-	x2, y2 := p.pixelAt(fyne.NewPos(p.PctX2 * size.Width, p.PctY2 * size.Height))
-	
+	size := p.CaptureView.Size()
+	x1, y1 := p.pixelAt(fyne.NewPos(p.CaptureView.px1*size.Width, p.CaptureView.py1*size.Height))
+	x2, y2 := p.pixelAt(fyne.NewPos(p.CaptureView.px2*size.Width, p.CaptureView.py2*size.Height))
+
 	// Update store with final pixels
 	store.Capture.SetCrop(x1, y1, x2, y2)
-	
+
 	return x1, y1, x2, y2
 }
 
@@ -313,11 +288,13 @@ func (p *StartCapturePage) pixelAt(pos fyne.Position) (int, int) {
 	store.Capture.RLock()
 	baseImg := store.Capture.BaseImage
 	store.Capture.RUnlock()
-	if baseImg == nil { return 0, 0 }
+	if baseImg == nil {
+		return 0, 0
+	}
 
 	bounds := baseImg.Bounds()
 	imgW, imgH := float32(bounds.Dx()), float32(bounds.Dy())
-	viewW, viewH := p.PreviewImg.Size().Width, p.PreviewImg.Size().Height
+	viewW, viewH := p.CaptureView.Size().Width, p.CaptureView.Size().Height
 
 	scale := viewW / imgW
 	if viewH/imgH < scale {
@@ -331,52 +308,20 @@ func (p *StartCapturePage) pixelAt(pos fyne.Position) (int, int) {
 
 	px := int((pos.X - offsetX) / scale)
 	py := int((pos.Y - offsetY) / scale)
-	if px < 0 { px = 0 }
-	if px > bounds.Dx() { px = bounds.Dx() }
-	if py < 0 { py = 0 }
-	if py > bounds.Dy() { py = bounds.Dy() }
+	if px < 0 {
+		px = 0
+	}
+	if px > bounds.Dx() {
+		px = bounds.Dx()
+	}
+	if py < 0 {
+		py = 0
+	}
+	if py > bounds.Dy() {
+		py = bounds.Dy()
+	}
 	return px, py
 }
-
-type cropLayout struct {
-	page *StartCapturePage
-}
-
-func (l *cropLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
-	if size.Width <= 0 || size.Height <= 0 {
-		return
-	}
-	p := l.page
-	hSize := float32(20)
-
-	// Position handles
-	pos := [4]fyne.Position{
-		{X: p.PctX1 * size.Width, Y: p.PctY1 * size.Height}, // TL
-		{X: p.PctX2 * size.Width, Y: p.PctY1 * size.Height}, // TR
-		{X: p.PctX1 * size.Width, Y: p.PctY2 * size.Height}, // BL
-		{X: p.PctX2 * size.Width, Y: p.PctY2 * size.Height}, // BR
-	}
-
-	for i := 0; i < 4; i++ {
-		// Move handle such that it is CENTERED on the corner
-		p.Handles[i].Move(pos[i].Subtract(fyne.NewPos(hSize/2, hSize/2)))
-		p.Handles[i].Resize(fyne.NewSize(hSize, hSize))
-	}
-
-	// Position red box
-	minX := minF(pos[0].X, pos[1].X, pos[2].X, pos[3].X)
-	minY := minF(pos[0].Y, pos[1].Y, pos[2].Y, pos[3].Y)
-	maxX := maxF(pos[0].X, pos[1].X, pos[2].X, pos[3].X)
-	maxY := maxF(pos[0].Y, pos[1].Y, pos[2].Y, pos[3].Y)
-
-	p.CropRect.Move(fyne.NewPos(minX, minY))
-	p.CropRect.Resize(fyne.NewSize(maxX-minX, maxY-minY))
-}
-
-func (l *cropLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {
-	return fyne.NewSize(100, 100)
-}
-
 
 func (p *StartCapturePage) updateBaseImage() {
 	if p.DisplaySelect == nil {
@@ -394,8 +339,6 @@ func (p *StartCapturePage) updateBaseImage() {
 		store.Capture.BaseImage = img
 		store.Capture.DisplayIndex = idx
 		store.Capture.Unlock()
-		
-		p.PreviewImg.Image = img
 	}
 }
 
