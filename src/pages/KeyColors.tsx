@@ -12,8 +12,11 @@ const KeyColors: React.FC = () => {
     addKeyColor, 
     removeKeyColor, 
     updateKeyColorLabel,
-    updateKeyColorConfig 
+    updateKeyColorConfig,
+    setSelectedColorId,
+    setActivePage
   } = useCapture();
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -163,13 +166,26 @@ const KeyColors: React.FC = () => {
                     </div>
                   </div>
 
-                  <button 
-                    className="btn-icon delete" 
-                    onClick={() => removeKeyColor(color.id)}
-                    title="Remove color"
-                  >
-                    ✕
-                  </button>
+                  <div className="color-actions">
+                    <button 
+                      className="btn-icon isolate" 
+                      onClick={() => {
+                        setSelectedColorId(color.id);
+                        setActivePage('DETECTION');
+                      }}
+                      title="Isolate this color"
+                    >
+                      🔍
+                    </button>
+                    <button 
+                      className="btn-icon delete" 
+                      onClick={() => removeKeyColor(color.id)}
+                      title="Remove color"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
                 </div>
               ))}
             </div>

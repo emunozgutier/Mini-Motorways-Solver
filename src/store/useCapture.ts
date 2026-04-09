@@ -4,7 +4,7 @@ import { hueDiff } from '../utils/colorUtils';
 
 export type CaptureStep = 'SELECT_SOURCE' | 'WINDOW_MODE' | 'SELECT_AREA' | 'READY';
 
-export type ActivePage = 'START' | 'DISPLAY' | 'COLORS';
+export type ActivePage = 'START' | 'DISPLAY' | 'COLORS' | 'DETECTION';
 
 interface CropArea {
   x: number;
@@ -30,10 +30,12 @@ interface CaptureState {
   stream: MediaStream | null;
   cropArea: CropArea;
   keyColors: KeyColor[];
+  selectedColorId: string | null;
   setStep: (step: CaptureStep) => void;
   setActivePage: (page: ActivePage) => void;
   setStream: (stream: MediaStream | null) => void;
   setCropArea: (cropArea: CropArea) => void;
+  setSelectedColorId: (id: string | null) => void;
   addKeyColor: (color: Omit<KeyColor, 'label' | 'id' | 'minWidth' | 'minHeight'>) => { success: boolean, reason?: string };
   removeKeyColor: (id: string) => void;
   updateKeyColorLabel: (id: string, label: string) => void;
@@ -51,10 +53,12 @@ export const useCapture = create<CaptureState>()(
       stream: null,
       cropArea: { x: 10, y: 10, width: 80, height: 80 },
       keyColors: [],
+      selectedColorId: null,
       setStep: (step) => set({ step }),
       setActivePage: (activePage) => set({ activePage }),
       setStream: (stream) => set({ stream }),
       setCropArea: (cropArea) => set({ cropArea }),
+      setSelectedColorId: (selectedColorId) => set({ selectedColorId }),
       addKeyColor: (color) => {
         const { keyColors } = get();
         
@@ -93,7 +97,8 @@ export const useCapture = create<CaptureState>()(
         activePage: 'START',
         stream: null, 
         cropArea: { x: 10, y: 10, width: 80, height: 80 },
-        keyColors: []
+        keyColors: [],
+        selectedColorId: null
       }),
 
     }),
@@ -103,8 +108,10 @@ export const useCapture = create<CaptureState>()(
       partialize: (state) => ({ 
         cropArea: state.cropArea, 
         keyColors: state.keyColors,
-        activePage: state.activePage === 'START' ? 'START' : 'DISPLAY'
+        selectedColorId: state.selectedColorId,
+        activePage: state.activePage === 'START' ? 'START' : state.activePage
       }),
     }
   )
 );
+

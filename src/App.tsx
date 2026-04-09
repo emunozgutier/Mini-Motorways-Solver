@@ -3,6 +3,7 @@ import PageTabs from './components/PageTabs'
 import StartCapture from './pages/StartCapture'
 import CaptureDisplay from './pages/CaptureDisplay'
 import KeyColors from './pages/KeyColors'
+import ObjectDetection from './pages/ObjectDetection'
 import './App.css'
 
 
@@ -17,6 +18,8 @@ function App() {
         return <CaptureDisplay />;
       case 'COLORS':
         return <KeyColors />;
+      case 'DETECTION':
+        return <ObjectDetection />;
       default:
         return <StartCapture />;
     }
